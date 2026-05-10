@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Clock, MapPin, Plus, Search, Star, WalletCards } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -128,10 +129,13 @@ const activities = [
   },
 ];
 
-export default function ExplorePage() {
-  const [query, setQuery] = useState("");
-  const [region, setRegion] = useState("All");
-  const [activityType, setActivityType] = useState("All");
+function ExploreContent() {
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("query") ?? "");
+  const [region, setRegion] = useState(searchParams.get("region") ?? "All");
+  const [activityType, setActivityType] = useState(
+    searchParams.get("activityType") ?? "All",
+  );
 
   const filteredDestinations = useMemo(
     () =>
@@ -307,5 +311,23 @@ export default function ExplorePage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function ExplorePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gray-50 px-6 py-10">
+          <div className="mx-auto max-w-6xl">
+            <Card className="p-8 text-center text-gray-600">
+              Loading explore...
+            </Card>
+          </div>
+        </main>
+      }
+    >
+      <ExploreContent />
+    </Suspense>
   );
 }

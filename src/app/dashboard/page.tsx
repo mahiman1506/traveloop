@@ -2,12 +2,27 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Calendar, MapPin, DollarSign, Users } from "lucide-react";
+import {
+  BookOpen,
+  Calendar,
+  CheckSquare,
+  Compass,
+  DollarSign,
+  MapPin,
+  Users,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+type DashboardTrip = {
+  _id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+};
+
 export default function DashboardPage() {
-  const [trips, setTrips] = useState([]);
+  const [trips, setTrips] = useState<DashboardTrip[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchTrips = useCallback(async () => {
@@ -64,7 +79,64 @@ export default function DashboardPage() {
     { name: "Rome, Italy", image: "🏛️" },
   ];
 
-  const regionSelections = ["Country", "State", "Party type", "Budget"];
+  const regionSelections = [
+    { label: "Country", href: "/explore?query=country" },
+    { label: "State", href: "/explore?query=state" },
+    { label: "Party type", href: "/dashboard/trips/new" },
+    { label: "Budget", href: "/dashboard/budget" },
+  ];
+
+  const tripRegionalSelections = [
+    {
+      label: "Mountains",
+      href: "/explore?activityType=Nature&query=mountain",
+    },
+    {
+      label: "Beaches",
+      href: "/explore?activityType=Nature&query=beach",
+    },
+    {
+      label: "Cities",
+      href: "/explore?query=City",
+    },
+    {
+      label: "Cultural routes",
+      href: "/explore?activityType=Culture",
+    },
+  ];
+
+  const quickActions = [
+    {
+      label: "Plan Itinerary",
+      href: "/dashboard/itinerary",
+      icon: Calendar,
+    },
+    {
+      label: "Set Budget",
+      href: "/dashboard/budget",
+      icon: DollarSign,
+    },
+    {
+      label: "Find Activities",
+      href: "/explore?activityType=All",
+      icon: MapPin,
+    },
+    {
+      label: "Packing Checklist",
+      href: "/dashboard/checklist",
+      icon: CheckSquare,
+    },
+    {
+      label: "Travel Notes",
+      href: "/dashboard/notes",
+      icon: BookOpen,
+    },
+    {
+      label: "Invite Friends",
+      href: trips[0]?._id ? `/dashboard/trips/${trips[0]._id}` : "/dashboard/trips/new",
+      icon: Users,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -95,8 +167,8 @@ export default function DashboardPage() {
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-4">
           {regionSelections.map((selection) => (
-            <Button key={selection} variant="outline">
-              {selection}
+            <Button key={selection.label} variant="outline" asChild>
+              <Link href={selection.href}>{selection.label}</Link>
             </Button>
           ))}
         </div>
@@ -135,7 +207,7 @@ export default function DashboardPage() {
               <p className="text-gray-600">Loading trips...</p>
             ) : trips.length > 0 ? (
               <div className="space-y-4">
-                {trips.map((trip: any) => (
+                {trips.map((trip) => (
                   <Link
                     key={trip._id}
                     href={`/dashboard/trips/${trip._id}`}
@@ -184,13 +256,15 @@ export default function DashboardPage() {
       <Card className="p-6">
         <h2 className="text-xl font-bold mb-4">Trip Regional Selections</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {["Mountains", "Beaches", "Cities", "Cultural routes"].map((item) => (
-            <div
-              key={item}
-              className="flex h-24 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700"
+          {tripRegionalSelections.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="flex h-24 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
             >
-              {item}
-            </div>
+              <Compass size={18} />
+              {item.label}
+            </Link>
           ))}
         </div>
       </Card>
@@ -198,23 +272,24 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <Card className="p-6">
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Button variant="outline" className="h-20 flex-col gap-2">
-            <Calendar size={24} />
-            Plan Itinerary
-          </Button>
-          <Button variant="outline" className="h-20 flex-col gap-2">
-            <DollarSign size={24} />
-            Set Budget
-          </Button>
-          <Button variant="outline" className="h-20 flex-col gap-2">
-            <MapPin size={24} />
-            Find Activities
-          </Button>
-          <Button variant="outline" className="h-20 flex-col gap-2">
-            <Users size={24} />
-            Invite Friends
-          </Button>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+
+            return (
+              <Button
+                key={action.label}
+                variant="outline"
+                className="h-20 flex-col gap-2"
+                asChild
+              >
+                <Link href={action.href}>
+                  <Icon size={24} />
+                  {action.label}
+                </Link>
+              </Button>
+            );
+          })}
         </div>
       </Card>
     </div>

@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,43 +16,12 @@ interface ChecklistItem {
 }
 
 export default function ChecklistPage() {
-  const [items, setItems] = useState<ChecklistItem[]>([
-    { id: "1", text: "Passport", category: "documents", completed: false },
-    {
-      id: "2",
-      text: "Travel insurance",
-      category: "documents",
-      completed: false,
-    },
-    { id: "3", text: "Book flights", category: "documents", completed: false },
-    {
-      id: "4",
-      text: "Reserve hotels",
-      category: "documents",
-      completed: false,
-    },
-    { id: "5", text: "Casual clothes", category: "clothing", completed: false },
-    {
-      id: "6",
-      text: "Comfortable shoes",
-      category: "clothing",
-      completed: false,
-    },
-    {
-      id: "7",
-      text: "Phone charger",
-      category: "electronics",
-      completed: false,
-    },
-    {
-      id: "8",
-      text: "Travel adapter",
-      category: "electronics",
-      completed: false,
-    },
-  ]);
+  const [items, setItems] = useState<ChecklistItem[]>([]);
 
   const [newItem, setNewItem] = useState({ text: "", category: "misc" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
 
   const categories = [
     "documents",
@@ -61,48 +32,154 @@ export default function ChecklistPage() {
     "misc",
   ];
 
+  const persistChecklist = useCallback(async (nextItems: ChecklistItem[]) => {
+    setSaving(true);
+
+    try {
+      const response = await fetch("/api/checklist", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ items: nextItems }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || "Failed to save checklist.");
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Failed to save checklist:", error);
+      toast.error("Failed to save checklist.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchChecklist = async () => {
+      try {
+        const response = await fetch("/api/checklist");
+
+        if (response.status === 401) {
+          setIsLoggedIn(false);
+          return;
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          toast.error(result.error || "Failed to load checklist.");
+          return;
+        }
+
+        setItems(
+          (result.items ?? []).map((item: any) => ({
+            id: String(item.id),
+            text: item.text ?? "",
+            category: item.category ?? "misc",
+            completed: Boolean(item.completed),
+          })),
+        );
+      } catch (error) {
+        console.error("Failed to load checklist:", error);
+        toast.error("Failed to load checklist.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChecklist();
+  }, []);
+
   const addItem = () => {
     if (newItem.text.trim()) {
-      setItems([
+      const nextItems = [
         ...items,
         {
           id: Date.now().toString(),
-          text: newItem.text,
+          text: newItem.text.trim(),
           category: newItem.category,
           completed: false,
         },
-      ]);
+      ];
+      setItems(nextItems);
+      persistChecklist(nextItems);
       setNewItem({ text: "", category: "misc" });
     }
   };
 
   const toggleComplete = (id: string) => {
-    setItems(
-      items.map((item) =>
-        item.id === id ? { ...item, completed: !item.completed } : item,
-      ),
+    const nextItems = items.map((item) =>
+      item.id === id ? { ...item, completed: !item.completed } : item,
     );
+    setItems(nextItems);
+    persistChecklist(nextItems);
   };
 
   const deleteItem = (id: string) => {
-    setItems(items.filter((item) => item.id !== id));
+    const nextItems = items.filter((item) => item.id !== id);
+    setItems(nextItems);
+    persistChecklist(nextItems);
   };
 
   const resetChecklist = () => {
-    setItems(items.map((item) => ({ ...item, completed: false })));
+    const nextItems = items.map((item) => ({ ...item, completed: false }));
+    setItems(nextItems);
+    persistChecklist(nextItems);
   };
 
   const completedCount = items.filter((item) => item.completed).length;
   const progress =
     items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center text-gray-600">
+          Loading checklist...
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Please log in to manage your checklist
+          </h1>
+          <p className="mt-2 text-gray-600">
+            Your packing checklist is saved to your TravelLoop account.
+          </p>
+          <Link href="/auth/login">
+            <Button className="mt-5">Go to Login</Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Packing Checklist
-        </h1>
-        <p className="text-gray-600">Don&apos;t forget anything!</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Packing Checklist
+          </h1>
+          <p className="text-gray-600">Don&apos;t forget anything!</p>
+        </div>
+        {saving && (
+          <span className="rounded-md bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+            Saving...
+          </span>
+        )}
       </div>
 
       {/* Progress */}
@@ -207,6 +284,12 @@ export default function ChecklistPage() {
           </Card>
         );
       })}
+
+      {items.length === 0 && (
+        <Card className="p-8 text-center text-gray-600">
+          No checklist items yet. Add your first packing item above.
+        </Card>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -15,13 +15,33 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import Link from "next/link";
+import toast from "react-hot-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Edit3, GripVertical, Plus, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  GripVertical,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { SortableItem } from "@/components/SortableItem";
+
+type ItineraryStop = {
+  id: string;
+  city: string;
+  country: string;
+  startDate: string;
+  endDate: string;
+  activities: string[];
+};
 
 type ItinerarySection = {
   id: string;
@@ -29,25 +49,58 @@ type ItinerarySection = {
   details: string;
 };
 
+type CalendarEntry = {
+  stop: ItineraryStop;
+  label: string;
+  isStart: boolean;
+  isEnd: boolean;
+};
+
+const monthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+});
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function parseDateInput(value: string) {
+  return new Date(`${value}T00:00:00`);
+}
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildCalendarDays(monthDate: Date) {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+  const days = [];
+
+  for (let index = 0; index < firstDay.getDay(); index += 1) {
+    days.push(null);
+  }
+
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day));
+  }
+
+  while (days.length % 7 !== 0) {
+    days.push(null);
+  }
+
+  return days;
+}
+
 export default function ItineraryPage() {
-  const [stops, setStops] = useState([
-    {
-      id: "1",
-      city: "Paris",
-      country: "France",
-      startDate: "2024-06-01",
-      endDate: "2024-06-03",
-      activities: ["Eiffel Tower sunset", "Louvre morning visit"],
-    },
-    {
-      id: "2",
-      city: "London",
-      country: "UK",
-      startDate: "2024-06-04",
-      endDate: "2024-06-06",
-      activities: ["British Museum", "Thames evening walk"],
-    },
-  ]);
+  const [stops, setStops] = useState<ItineraryStop[]>([]);
 
   const [newStop, setNewStop] = useState({
     city: "",
@@ -58,26 +111,7 @@ export default function ItineraryPage() {
   const [activityDrafts, setActivityDrafts] = useState<Record<string, string>>(
     {},
   );
-  const [sections, setSections] = useState<ItinerarySection[]>([
-    {
-      id: "arrival",
-      title: "Arrival and orientation",
-      details:
-        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
-    },
-    {
-      id: "main-activities",
-      title: "Main activities",
-      details:
-        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
-    },
-    {
-      id: "departure",
-      title: "Departure day",
-      details:
-        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
-    },
-  ]);
+  const [sections, setSections] = useState<ItinerarySection[]>([]);
   const [newSection, setNewSection] = useState({
     title: "",
     details: "",
@@ -87,6 +121,13 @@ export default function ItineraryPage() {
     title: "",
     details: "",
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -95,13 +136,112 @@ export default function ItineraryPage() {
     }),
   );
 
+  const persistItinerary = useCallback(
+    async (nextStops: ItineraryStop[], nextSections: ItinerarySection[]) => {
+      setSaving(true);
+
+      try {
+        const response = await fetch("/api/itinerary", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            stops: nextStops,
+            sections: nextSections,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          toast.error(result.error || "Failed to save itinerary.");
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Failed to save itinerary:", error);
+        toast.error("Failed to save itinerary.");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const fetchItinerary = async () => {
+      try {
+        const response = await fetch("/api/itinerary");
+
+        if (response.status === 401) {
+          setIsLoggedIn(false);
+          return;
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          toast.error(result.error || "Failed to load itinerary.");
+          return;
+        }
+
+        const loadedStops = (result.stops ?? []).map((stop: any) => ({
+            id: String(stop.id),
+            city: stop.city ?? "",
+            country: stop.country ?? "",
+            startDate: stop.startDate
+              ? new Date(stop.startDate).toISOString().slice(0, 10)
+              : "",
+            endDate: stop.endDate
+              ? new Date(stop.endDate).toISOString().slice(0, 10)
+              : "",
+            activities: Array.isArray(stop.activities) ? stop.activities : [],
+          }));
+
+        setStops(loadedStops);
+        const firstStop = loadedStops
+          .filter((stop: ItineraryStop) => stop.startDate)
+          .sort((a: ItineraryStop, b: ItineraryStop) =>
+            a.startDate.localeCompare(b.startDate),
+          )[0];
+
+        if (firstStop) {
+          const firstStopDate = parseDateInput(firstStop.startDate);
+          setCalendarMonth(
+            new Date(firstStopDate.getFullYear(), firstStopDate.getMonth(), 1),
+          );
+        }
+
+        setSections(
+          (result.sections ?? []).map((section: any) => ({
+            id: String(section.id),
+            title: section.title ?? "",
+            details: section.details ?? "",
+          })),
+        );
+      } catch (error) {
+        console.error("Failed to load itinerary:", error);
+        toast.error("Failed to load itinerary.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchItinerary();
+  }, []);
+
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
       const oldIndex = stops.findIndex((s) => s.id === active.id);
       const newIndex = stops.findIndex((s) => s.id === over.id);
-      setStops(arrayMove(stops, oldIndex, newIndex));
+      const nextStops = arrayMove(stops, oldIndex, newIndex);
+      setStops(nextStops);
+      persistItinerary(nextStops, sections);
     }
   };
 
@@ -112,20 +252,24 @@ export default function ItineraryPage() {
       newStop.startDate &&
       newStop.endDate
     ) {
-      setStops([
+      const nextStops = [
         ...stops,
         {
           id: Date.now().toString(),
           ...newStop,
           activities: [],
         },
-      ]);
+      ];
+      setStops(nextStops);
+      persistItinerary(nextStops, sections);
       setNewStop({ city: "", country: "", startDate: "", endDate: "" });
     }
   };
 
   const deleteStop = (id: string) => {
-    setStops(stops.filter((s) => s.id !== id));
+    const nextStops = stops.filter((s) => s.id !== id);
+    setStops(nextStops);
+    persistItinerary(nextStops, sections);
   };
 
   const addActivityToStop = (id: string) => {
@@ -134,27 +278,29 @@ export default function ItineraryPage() {
       return;
     }
 
-    setStops(
-      stops.map((stop) =>
-        stop.id === id
-          ? { ...stop, activities: [...stop.activities, activity] }
-          : stop,
-      ),
+    const nextStops = stops.map((stop) =>
+      stop.id === id
+        ? { ...stop, activities: [...stop.activities, activity] }
+        : stop,
     );
+
+    setStops(nextStops);
+    persistItinerary(nextStops, sections);
     setActivityDrafts({ ...activityDrafts, [id]: "" });
   };
 
   const removeActivityFromStop = (stopId: string, activity: string) => {
-    setStops(
-      stops.map((stop) =>
-        stop.id === stopId
-          ? {
-              ...stop,
-              activities: stop.activities.filter((item) => item !== activity),
-            }
-          : stop,
-      ),
+    const nextStops = stops.map((stop) =>
+      stop.id === stopId
+        ? {
+            ...stop,
+            activities: stop.activities.filter((item) => item !== activity),
+          }
+        : stop,
     );
+
+    setStops(nextStops);
+    persistItinerary(nextStops, sections);
   };
 
   const addSection = () => {
@@ -165,7 +311,7 @@ export default function ItineraryPage() {
       return;
     }
 
-    setSections([
+    const nextSections = [
       ...sections,
       {
         id: Date.now().toString(),
@@ -174,7 +320,10 @@ export default function ItineraryPage() {
           details ||
           "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
       },
-    ]);
+    ];
+
+    setSections(nextSections);
+    persistItinerary(stops, nextSections);
     setNewSection({ title: "", details: "" });
   };
 
@@ -193,17 +342,18 @@ export default function ItineraryPage() {
       return;
     }
 
-    setSections(
-      sections.map((section) =>
-        section.id === id
-          ? {
-              ...section,
-              title,
-              details: sectionDraft.details.trim(),
-            }
-          : section,
-      ),
+    const nextSections = sections.map((section) =>
+      section.id === id
+        ? {
+            ...section,
+            title,
+            details: sectionDraft.details.trim(),
+          }
+        : section,
     );
+
+    setSections(nextSections);
+    persistItinerary(stops, nextSections);
     setEditingSectionId(null);
     setSectionDraft({ title: "", details: "" });
   };
@@ -214,16 +364,140 @@ export default function ItineraryPage() {
   };
 
   const deleteSection = (id: string) => {
-    setSections(sections.filter((section) => section.id !== id));
+    const nextSections = sections.filter((section) => section.id !== id);
+    setSections(nextSections);
+    persistItinerary(stops, nextSections);
   };
+
+  const calendarDays = buildCalendarDays(calendarMonth);
+  const calendarEntries = stops.reduce<Record<string, CalendarEntry[]>>(
+    (entries, stop) => {
+      if (!stop.startDate || !stop.endDate) {
+        return entries;
+      }
+
+      const startDate = parseDateInput(stop.startDate);
+      const endDate = parseDateInput(stop.endDate);
+
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return entries;
+      }
+
+      const currentDate = new Date(startDate);
+      const finalDate = endDate < startDate ? startDate : endDate;
+
+      while (currentDate <= finalDate) {
+        const key = toDateKey(currentDate);
+        const isStart = key === toDateKey(startDate);
+        const isEnd = key === toDateKey(finalDate);
+
+        entries[key] = [
+          ...(entries[key] ?? []),
+          {
+            stop,
+            isStart,
+            isEnd,
+            label:
+              isStart && isEnd
+                ? `${stop.city} stop`
+                : isStart
+                  ? `Arrive ${stop.city}`
+                  : isEnd
+                    ? `Leave ${stop.city}`
+                    : stop.city,
+          },
+        ];
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      return entries;
+    },
+    {},
+  );
+
+  const visibleMonthStops = stops.filter((stop) => {
+    if (!stop.startDate || !stop.endDate) {
+      return false;
+    }
+
+    const startDate = parseDateInput(stop.startDate);
+    const endDate = parseDateInput(stop.endDate);
+    const monthStart = new Date(
+      calendarMonth.getFullYear(),
+      calendarMonth.getMonth(),
+      1,
+    );
+    const monthEnd = new Date(
+      calendarMonth.getFullYear(),
+      calendarMonth.getMonth() + 1,
+      0,
+    );
+
+    return startDate <= monthEnd && endDate >= monthStart;
+  });
+
+  const goToPreviousMonth = () => {
+    setCalendarMonth(
+      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
+    );
+  };
+
+  const goToNextMonth = () => {
+    setCalendarMonth(
+      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
+    );
+  };
+
+  const goToCurrentMonth = () => {
+    const today = new Date();
+    setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center text-gray-600">
+          Loading itinerary...
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Please log in to manage your itinerary
+          </h1>
+          <p className="mt-2 text-gray-600">
+            Your itinerary is saved to your TravelLoop account.
+          </p>
+          <Link href="/auth/login">
+            <Button className="mt-5">Go to Login</Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Itinerary Builder
-        </h1>
-        <p className="text-gray-600">Plan your trip stops and activities</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Itinerary Builder
+            </h1>
+            <p className="text-gray-600">Plan your trip stops and activities</p>
+          </div>
+          {saving && (
+            <span className="rounded-md bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+              Saving...
+            </span>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="stops" className="space-y-4">
@@ -279,6 +553,7 @@ export default function ItineraryPage() {
 
           {/* Draggable Stops List */}
           <DndContext
+            id="itinerary-stops"
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
@@ -363,6 +638,12 @@ export default function ItineraryPage() {
                     )}
                   </SortableItem>
                 ))}
+                {stops.length === 0 && (
+                  <Card className="p-8 text-center text-gray-600">
+                    No stops yet. Add your first destination to build the
+                    itinerary.
+                  </Card>
+                )}
               </div>
             </SortableContext>
           </DndContext>
@@ -407,19 +688,136 @@ export default function ItineraryPage() {
 
         <TabsContent value="calendar">
           <Card className="p-6">
-            <h2 className="text-lg font-bold mb-4">Calendar View</h2>
-            <div className="grid grid-cols-7 gap-2">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} className="font-semibold text-center p-2">
-                  {day}
-                </div>
-              ))}
-              {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className="border p-2 text-center text-sm">
-                  {i + 1 <= 28 ? i + 1 : ""}
-                </div>
-              ))}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Calendar View
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {visibleMonthStops.length} stop
+                  {visibleMonthStops.length === 1 ? "" : "s"} scheduled in{" "}
+                  {monthFormatter.format(calendarMonth)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPreviousMonth}
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft size={16} />
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={goToCurrentMonth}>
+                  Today
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextMonth}
+                  aria-label="Next month"
+                >
+                  <ChevronRight size={16} />
+                </Button>
+              </div>
             </div>
+
+            <div className="overflow-x-auto">
+              <div className="min-w-[760px]">
+                <div className="grid grid-cols-7 border-l border-t border-gray-200">
+                  {weekdayLabels.map((day) => (
+                    <div
+                      key={day}
+                      className="border-b border-r border-gray-200 bg-gray-50 p-2 text-center text-sm font-semibold text-gray-700"
+                    >
+                      {day}
+                    </div>
+                  ))}
+
+                  {calendarDays.map((day, index) => {
+                    const key = day ? toDateKey(day) : `empty-${index}`;
+                    const entries = day ? calendarEntries[toDateKey(day)] ?? [] : [];
+                    const isToday = day
+                      ? toDateKey(day) === toDateKey(new Date())
+                      : false;
+
+                    return (
+                      <div
+                        key={key}
+                        className={`min-h-32 border-b border-r border-gray-200 p-2 ${
+                          day ? "bg-white" : "bg-gray-50"
+                        }`}
+                      >
+                        {day && (
+                          <>
+                            <div
+                              className={`mb-2 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                                isToday
+                                  ? "bg-blue-600 text-white"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {day.getDate()}
+                            </div>
+                            <div className="space-y-1">
+                              {entries.map((entry) => (
+                                <div
+                                  key={`${entry.stop.id}-${entry.label}`}
+                                  className="rounded-md bg-blue-50 px-2 py-1 text-left text-xs text-blue-800"
+                                >
+                                  <p className="font-semibold">{entry.label}</p>
+                                  <p className="text-blue-700">
+                                    {entry.stop.country}
+                                  </p>
+                                  {entry.isStart && entry.stop.activities.length > 0 && (
+                                    <p className="mt-1 line-clamp-2 text-blue-700">
+                                      {entry.stop.activities.join(", ")}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {stops.length === 0 && (
+              <div className="mt-4 rounded-md border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600">
+                Add stops with dates to populate the calendar.
+              </div>
+            )}
+
+            {stops.length > 0 && visibleMonthStops.length === 0 && (
+              <div className="mt-4 rounded-md border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600">
+                No stops are scheduled for {monthFormatter.format(calendarMonth)}.
+              </div>
+            )}
+
+            {visibleMonthStops.length > 0 && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {visibleMonthStops.map((stop) => (
+                  <div
+                    key={stop.id}
+                    className="rounded-md border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <h3 className="font-semibold text-gray-900">
+                      {stop.city}, {stop.country}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {dateFormatter.format(parseDateInput(stop.startDate))} -{" "}
+                      {dateFormatter.format(parseDateInput(stop.endDate))}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </TabsContent>
 
