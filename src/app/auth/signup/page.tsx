@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 const signupSchema = z
   .object({
     name: z.string().min(2, "Name must be at least 2 characters"),
+    lastName: z.string().optional(),
     email: z.string().email("Invalid email address"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string(),
@@ -86,7 +87,11 @@ export default function SignupPage() {
               placeholder="First Name"
               className="w-full"
             />
-            <Input placeholder="Last Name" className="w-full" />
+            <Input
+              {...register("lastName")}
+              placeholder="Last Name"
+              className="w-full"
+            />
           </div>
             {errors.name && (
               <p className="text-red-500 text-sm mt-1">{errors.name.message}</p>

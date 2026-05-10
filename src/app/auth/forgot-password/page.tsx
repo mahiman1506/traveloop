@@ -10,10 +10,41 @@ import { Input } from "@/components/ui/input";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
+  const [resetUrl, setResetUrl] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    toast.success("Password reset instructions sent if the email exists.");
+    setResetUrl("");
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || "Could not start password reset.");
+        return;
+      }
+
+      if (result.resetUrl) {
+        setResetUrl(result.resetUrl);
+      }
+
+      toast.success(result.message || "Password reset instructions sent.");
+    } catch (error) {
+      console.error("Forgot password failed:", error);
+      toast.error("Could not start password reset.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -37,10 +68,22 @@ export default function ForgotPasswordPage() {
               required
             />
           </div>
-          <Button type="submit" className="w-full">
-            Send Reset Link
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "Sending..." : "Send Reset Link"}
           </Button>
         </form>
+
+        {resetUrl && (
+          <div className="mt-5 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm">
+            <p className="font-semibold text-blue-900">Reset link ready</p>
+            <Link
+              href={resetUrl}
+              className="mt-2 block break-all text-blue-700 hover:underline"
+            >
+              {resetUrl}
+            </Link>
+          </div>
+        )}
 
         <Link
           href="/auth/login"

@@ -3,9 +3,16 @@ import bcryptjs from "bcryptjs";
 
 export interface IUser extends Document {
   name: string;
+  lastName?: string;
   email: string;
   password: string;
   image?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+  additionalInfo?: string;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
   matchPassword(password: string): Promise<boolean>;
@@ -16,6 +23,12 @@ const UserSchema: Schema = new Schema(
     name: {
       type: String,
       required: [true, "Please provide a name"],
+      trim: true,
+    },
+    lastName: {
+      type: String,
+      default: "",
+      trim: true,
     },
     email: {
       type: String,
@@ -36,6 +49,34 @@ const UserSchema: Schema = new Schema(
     image: {
       type: String,
       default: null,
+    },
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    city: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    country: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    additionalInfo: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    resetPasswordToken: {
+      type: String,
+      select: false,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
     },
   },
   {

@@ -12,9 +12,9 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="flex">
+      <div className="flex min-h-[calc(100vh-4rem)]">
         <Sidebar />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

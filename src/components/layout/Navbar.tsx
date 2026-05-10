@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu, X, Plane } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,18 +13,37 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function Navbar() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsOpen(false);
+      router.push("/auth/login");
+      router.refresh();
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
-    <nav className="bg-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4">
+    <nav className="sticky top-0 z-50 border-b border-gray-200 bg-white">
+      <div className="px-4 sm:px-6">
         <div className="flex justify-between items-center h-16">
           <Link
             href="/"
-            className="flex items-center gap-2 font-bold text-2xl text-blue-600"
+            className="flex min-w-0 items-center gap-2 font-bold text-2xl text-gray-950"
           >
-            <Plane size={28} />
-            TravelLoop
+            <Plane size={28} className="shrink-0" />
+            <span className="truncate">TravelLoop</span>
           </Link>
 
           <div className="hidden md:flex items-center gap-6">
@@ -51,13 +71,23 @@ export function Navbar() {
                 <DropdownMenuItem asChild>
                   <Link href="/admin">Admin</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>Logout</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-600 hover:bg-red-50"
+                >
+                  {isLoggingOut ? "Logging out..." : "Logout"}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
 
           <div className="md:hidden">
-            <button onClick={() => setIsOpen(!isOpen)}>
+            <button
+              type="button"
+              onClick={() => setIsOpen(!isOpen)}
+              className="rounded-md p-2 text-gray-700 hover:bg-gray-100"
+              aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
+            >
               {isOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
@@ -78,6 +108,14 @@ export function Navbar() {
             <Link href="/profile" className="block py-2 hover:text-blue-600">
               Profile
             </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="block w-full py-2 text-left text-red-600 hover:text-red-700 disabled:opacity-60"
+            >
+              {isLoggingOut ? "Logging out..." : "Logout"}
+            </button>
           </div>
         )}
       </div>

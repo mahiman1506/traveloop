@@ -18,9 +18,16 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Check, Edit3, GripVertical, Plus, Trash2, X } from "lucide-react";
 import { SortableItem } from "@/components/SortableItem";
+
+type ItinerarySection = {
+  id: string;
+  title: string;
+  details: string;
+};
 
 export default function ItineraryPage() {
   const [stops, setStops] = useState([
@@ -51,6 +58,35 @@ export default function ItineraryPage() {
   const [activityDrafts, setActivityDrafts] = useState<Record<string, string>>(
     {},
   );
+  const [sections, setSections] = useState<ItinerarySection[]>([
+    {
+      id: "arrival",
+      title: "Arrival and orientation",
+      details:
+        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
+    },
+    {
+      id: "main-activities",
+      title: "Main activities",
+      details:
+        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
+    },
+    {
+      id: "departure",
+      title: "Departure day",
+      details:
+        "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
+    },
+  ]);
+  const [newSection, setNewSection] = useState({
+    title: "",
+    details: "",
+  });
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [sectionDraft, setSectionDraft] = useState({
+    title: "",
+    details: "",
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -119,6 +155,66 @@ export default function ItineraryPage() {
           : stop,
       ),
     );
+  };
+
+  const addSection = () => {
+    const title = newSection.title.trim();
+    const details = newSection.details.trim();
+
+    if (!title) {
+      return;
+    }
+
+    setSections([
+      ...sections,
+      {
+        id: Date.now().toString(),
+        title,
+        details:
+          details ||
+          "Add timing, location, notes, required bookings, and activity details for this part of the itinerary.",
+      },
+    ]);
+    setNewSection({ title: "", details: "" });
+  };
+
+  const startEditingSection = (section: ItinerarySection) => {
+    setEditingSectionId(section.id);
+    setSectionDraft({
+      title: section.title,
+      details: section.details,
+    });
+  };
+
+  const saveSection = (id: string) => {
+    const title = sectionDraft.title.trim();
+
+    if (!title) {
+      return;
+    }
+
+    setSections(
+      sections.map((section) =>
+        section.id === id
+          ? {
+              ...section,
+              title,
+              details: sectionDraft.details.trim(),
+            }
+          : section,
+      ),
+    );
+    setEditingSectionId(null);
+    setSectionDraft({ title: "", details: "" });
+  };
+
+  const cancelEditingSection = () => {
+    setEditingSectionId(null);
+    setSectionDraft({ title: "", details: "" });
+  };
+
+  const deleteSection = (id: string) => {
+    setSections(sections.filter((section) => section.id !== id));
   };
 
   return (
@@ -194,13 +290,23 @@ export default function ItineraryPage() {
               <div className="space-y-3">
                 {stops.map((stop) => (
                   <SortableItem key={stop.id} id={stop.id}>
-                    <Card className="p-4 hover:shadow-md transition">
+                    {({ attributes, listeners, isDragging }) => (
+                    <Card
+                      className={`p-4 transition ${
+                        isDragging ? "shadow-lg" : "hover:shadow-md"
+                      }`}
+                    >
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-4 flex-1">
-                        <GripVertical
-                          size={20}
-                          className="text-gray-400 cursor-grab"
-                        />
+                        <button
+                          type="button"
+                          className="rounded-md p-1 text-gray-400 cursor-grab hover:bg-gray-100 active:cursor-grabbing"
+                          aria-label={`Reorder ${stop.city}`}
+                          {...attributes}
+                          {...listeners}
+                        >
+                          <GripVertical size={20} />
+                        </button>
                         <div>
                           <h3 className="font-semibold text-gray-900">
                             {stop.city}, {stop.country}
@@ -212,8 +318,10 @@ export default function ItineraryPage() {
                         </div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => deleteStop(stop.id)}
                         className="text-red-600 hover:text-red-700 p-2"
+                        aria-label={`Delete ${stop.city}`}
                       >
                         <Trash2 size={20} />
                       </button>
@@ -252,6 +360,7 @@ export default function ItineraryPage() {
                         </div>
                       </div>
                     </Card>
+                    )}
                   </SortableItem>
                 ))}
               </div>
@@ -316,27 +425,126 @@ export default function ItineraryPage() {
 
         <TabsContent value="sections">
           <div className="space-y-4">
-            {["Arrival and orientation", "Main activities", "Departure day"].map(
-              (section, index) => (
-                <Card key={section} className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="font-bold text-gray-900">
-                        Section {index + 1}: {section}
-                      </h2>
-                      <p className="mt-2 text-sm text-gray-600">
-                        Add timing, location, notes, required bookings, and
-                        activity details for this part of the itinerary.
-                      </p>
+            <Card className="p-6">
+              <h2 className="text-lg font-bold mb-4">Add Section</h2>
+              <div className="space-y-3">
+                <Input
+                  placeholder="Section title"
+                  value={newSection.title}
+                  onChange={(event) =>
+                    setNewSection({
+                      ...newSection,
+                      title: event.target.value,
+                    })
+                  }
+                />
+                <Textarea
+                  placeholder="Timing, location, notes, bookings, or activity details"
+                  value={newSection.details}
+                  onChange={(event) =>
+                    setNewSection({
+                      ...newSection,
+                      details: event.target.value,
+                    })
+                  }
+                  rows={3}
+                />
+                <Button
+                  onClick={addSection}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  disabled={!newSection.title.trim()}
+                >
+                  <Plus size={16} className="mr-2" />
+                  Add Section
+                </Button>
+              </div>
+            </Card>
+
+            {sections.map((section, index) => {
+              const isEditing = editingSectionId === section.id;
+
+              return (
+                <Card key={section.id} className="p-6">
+                  {isEditing ? (
+                    <div className="space-y-3">
+                      <Input
+                        value={sectionDraft.title}
+                        onChange={(event) =>
+                          setSectionDraft({
+                            ...sectionDraft,
+                            title: event.target.value,
+                          })
+                        }
+                      />
+                      <Textarea
+                        value={sectionDraft.details}
+                        onChange={(event) =>
+                          setSectionDraft({
+                            ...sectionDraft,
+                            details: event.target.value,
+                          })
+                        }
+                        rows={4}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => saveSection(section.id)}
+                          disabled={!sectionDraft.title.trim()}
+                        >
+                          <Check size={16} className="mr-2" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={cancelEditingSection}
+                        >
+                          <X size={16} className="mr-2" />
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="outline" size="sm">
-                      Edit Section
-                    </Button>
-                  </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="font-bold text-gray-900">
+                          Section {index + 1}: {section.title}
+                        </h2>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">
+                          {section.details ||
+                            "Add timing, location, notes, required bookings, and activity details for this part of the itinerary."}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditingSection(section)}
+                        >
+                          <Edit3 size={16} className="mr-2" />
+                          Edit
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => deleteSection(section.id)}
+                          className="p-2 text-red-600 hover:text-red-700"
+                          aria-label={`Delete ${section.title}`}
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </Card>
-              ),
+              );
+            })}
+
+            {sections.length === 0 && (
+              <Card className="p-8 text-center text-gray-600">
+                No sections yet. Add one to organize your itinerary.
+              </Card>
             )}
-            <Button>Add another Section</Button>
           </div>
         </TabsContent>
       </Tabs>

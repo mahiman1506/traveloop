@@ -7,7 +7,17 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const { name, email, password, confirmPassword } = await req.json();
+    const {
+      name,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+      phone,
+      city,
+      country,
+      additionalInfo,
+    } = await req.json();
 
     // Validation
     if (!name || !email || !password || !confirmPassword) {
@@ -36,8 +46,13 @@ export async function POST(req: NextRequest) {
     // Create new user
     const user = new User({
       name,
+      lastName: lastName || "",
       email,
       password,
+      phone: phone || "",
+      city: city || "",
+      country: country || "",
+      additionalInfo: additionalInfo || "",
     });
 
     await user.save();
@@ -56,7 +71,12 @@ export async function POST(req: NextRequest) {
         user: {
           id: user._id,
           name: user.name,
+          lastName: user.lastName,
           email: user.email,
+          phone: user.phone,
+          city: user.city,
+          country: user.country,
+          additionalInfo: user.additionalInfo,
         },
         token,
       },
